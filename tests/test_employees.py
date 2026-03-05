@@ -1,39 +1,4 @@
-import pytest
-from fastapi.testclient import TestClient
-from main import app
-from database import Base, engine, get_db
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
-# Setup test database
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-test_engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
-
-Base.metadata.create_all(bind=test_engine)
-
-def override_get_db():
-    try:
-        db = TestingSessionLocal()
-        yield db
-    finally:
-        db.close()
-
-app.dependency_overrides[get_db] = override_get_db
-
-client = TestClient(app)
-
-@pytest.fixture(autouse=True)
-def run_around_tests():
-    # Setup: create tables
-    Base.metadata.create_all(bind=test_engine)
-    yield
-    # Teardown: drop tables
-    Base.metadata.drop_all(bind=test_engine)
-
-def test_create_employee():
+def test_create_employee(client):
     response = client.post(
         "/employees/",
         json={
@@ -50,7 +15,7 @@ def test_create_employee():
     assert data["country"] == "United States"
     assert "id" in data
 
-def test_read_employee():
+def test_read_employee(client):
     # First create
     create_response = client.post(
         "/employees/",
@@ -71,11 +36,11 @@ def test_read_employee():
     assert read_data["full_name"] == "Jane Smith"
     assert read_data["id"] == emp_id
 
-def test_read_employee_not_found():
+def test_read_employee_not_found(client):
     response = client.get("/employees/999")
     assert response.status_code == 404
 
-def test_read_employees():
+def test_read_employees(client):
     client.post(
         "/employees/",
         json={"full_name": "A", "job_title": "B", "country": "C", "salary": 10}
@@ -88,7 +53,7 @@ def test_read_employees():
     assert response.status_code == 200
     assert len(response.json()) >= 2
 
-def test_update_employee():
+def test_update_employee(client):
     # Create
     create_resp = client.post(
         "/employees/",
@@ -109,7 +74,7 @@ def test_update_employee():
     read_resp = client.get(f"/employees/{emp_id}")
     assert read_resp.json()["job_title"] == "New Title"
 
-def test_delete_employee():
+def test_delete_employee(client):
     # Create
     create_resp = client.post(
         "/employees/",
